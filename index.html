@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Fancy Cognito WebSocket Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(0, 200, 255, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(168, 85, 247, 0.18), transparent 30%),
+        linear-gradient(135deg, #081120 0%, #111827 45%, #1f2937 100%);
+      color: #f9fafb;
+    }
+
+    .app {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .chat-shell {
+      width: 100%;
+      max-width: 1100px;
+      min-height: 720px;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 28px;
+      overflow: hidden;
+      backdrop-filter: blur(18px);
+      background: rgba(255,255,255,0.06);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.35);
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, rgba(15,23,42,0.95), rgba(30,41,59,0.85));
+      border-right: 1px solid rgba(255,255,255,0.08);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-badge {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      font-size: 28px;
+      background: linear-gradient(135deg, #22d3ee, #8b5cf6);
+      box-shadow: 0 10px 30px rgba(139,92,246,0.35);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+
+    .brand p {
+      margin: 4px 0 0;
+      color: #cbd5e1;
+      font-size: 0.92rem;
+    }
+
+    .status-card,
+    .profile-card,
+    .guide-card {
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 16px rgba(239,68,68,0.5);
+    }
+
+    .dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 16px rgba(34,197,94,0.5);
+    }
+
+    .label {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+
+    .big {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(15,23,42,0.8);
+      color: #fff;
+      outline: none;
+      font-size: 0.96rem;
+    }
+
+    .btn {
+      border: 0;
+      cursor: pointer;
+      border-radius: 14px;
+      padding: 13px 16px;
+      font-size: 0.96rem;
+      font-weight: 700;
+      transition: transform .16s ease, opacity .16s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      opacity: 0.95;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #22d3ee, #8b5cf6);
+      color: white;
+      box-shadow: 0 14px 30px rgba(34,211,238,0.18);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.08);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    }
+
+    .main-header {
+      padding: 22px 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .main-header h2 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    .main-header p {
+      margin: 6px 0 0;
+      color: #cbd5e1;
+      font-size: 0.92rem;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+
+    .message {
+      max-width: 75%;
+      padding: 14px 16px;
+      border-radius: 18px;
+      position: relative;
+      line-height: 1.45;
+      word-break: break-word;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 16px 30px rgba(0,0,0,0.15);
+      animation: pop .18s ease;
+    }
+
+    @keyframes pop {
+      from { transform: translateY(8px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .message .meta {
+      font-size: 0.78rem;
+      margin-bottom: 6px;
+      opacity: 0.85;
+    }
+
+    .message.mine {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(34,211,238,0.22), rgba(139,92,246,0.28));
+    }
+
+    .message.other {
+      align-self: flex-start;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .message.system {
+      align-self: center;
+      max-width: 90%;
+      background: rgba(250,204,21,0.12);
+      border: 1px solid rgba(250,204,21,0.2);
+      color: #fde68a;
+      text-align: center;
+    }
+
+    .composer {
+      padding: 20px 24px 24px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      background: rgba(2,6,23,0.25);
+    }
+
+    .composer textarea {
+      resize: none;
+      min-height: 64px;
+      max-height: 160px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(15,23,42,0.85);
+      color: white;
+      outline: none;
+      font-size: 0.98rem;
+      font-family: inherit;
+    }
+
+    .composer-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 150px;
+    }
+
+    .muted {
+      color: #94a3b8;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      word-break: break-all;
+    }
+
+    @media (max-width: 900px) {
+      .chat-shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      .message {
+        max-width: 88%;
+      }
+      .composer {
+        grid-template-columns: 1fr;
+      }
+      .composer-actions {
+        width: 100%;
+        flex-direction: row;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="chat-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-badge">💬</div>
+          <div>
+            <h1>Fancy Cognito Chat</h1>
+            <p>Cognito + WebSocket API 실시간 채팅 데모</p>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <div class="label">연결 상태</div>
+          <div class="status-row">
+            <div class="big" id="statusText">연결 안 됨</div>
+            <div class="dot" id="statusDot"></div>
+          </div>
+          <div class="muted" id="socketUrlText" style="margin-top:10px;">소켓 URL 미설정</div>
+        </div>
+
+        <div class="profile-card">
+          <div class="label">내 프로필</div>
+          <div class="muted" id="authText">로그인 안 됨</div>
+          <div style="height:12px;"></div>
+          <button class="btn btn-primary" id="loginBtn">Cognito 로그인</button>
+          <div style="height:10px;"></div>
+          <button class="btn btn-secondary" id="logoutBtn">로그아웃</button>
+          <div style="height:10px;"></div>
+          <button class="btn btn-primary" id="connectBtn">연결하기</button>
+          <div style="height:10px;"></div>
+          <button class="btn btn-secondary" id="disconnectBtn">연결 끊기</button>
+        </div>
+
+        <div class="guide-card">
+          <div class="label">사용 방법</div>
+          <div class="muted">
+            • 먼저 Cognito 로그인부터 수행하세요.<br/>
+            • 로그인 후 WebSocket 연결을 수행하세요.<br/>
+            • 채팅 표시 이름은 Cognito 사용자명입니다.<br/>
+            • 브라우저 탭 두 개를 열어 서로 다른 사용자로 테스트해보세요.
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="main-header">
+          <div>
+            <h2>실시간 채팅방</h2>
+            <p>Cognito UserPool + WebSocket API + Lambda + DynamoDB</p>
+          </div>
+        </div>
+
+        <section class="messages" id="messages"></section>
+
+        <div class="composer">
+          <textarea id="messageInput" placeholder="메시지를 입력하세요. Enter는 전송, Shift+Enter는 줄바꿈입니다."></textarea>
+          <div class="composer-actions">
+            <button class="btn btn-primary" id="sendBtn">메시지 전송</button>
+            <button class="btn btn-secondary" id="clearBtn">화면 지우기</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // =========================
+    // Cognito / WebSocket 설정
+    // =========================
+    const AWS_REGION = "ap-northeast-2";
+    const USER_POOL_DOMAIN = "https://YOUR_DOMAIN_PREFIX.auth.ap-northeast-2.amazoncognito.com";
+    const CLIENT_ID = "YOUR_COGNITO_APP_CLIENT_ID";
+    const REDIRECT_URI = window.location.origin;
+    const WEBSOCKET_URL = "wss://YOUR_API_ID.execute-api.ap-northeast-2.amazonaws.com/prod";
+
+    let socket = null;
+    let isConnected = false;
+    let auth = {
+      idToken: null,
+      accessToken: null,
+      username: null,
+      displayName: null
+    };
+
+    const messagesEl = document.getElementById("messages");
+    const messageInput = document.getElementById("messageInput");
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const sendBtn = document.getElementById("sendBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const statusText = document.getElementById("statusText");
+    const statusDot = document.getElementById("statusDot");
+    const socketUrlText = document.getElementById("socketUrlText");
+    const authText = document.getElementById("authText");
+
+    socketUrlText.textContent = WEBSOCKET_URL;
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function base64UrlDecode(str) {
+      const pad = "=".repeat((4 - (str.length % 4)) % 4);
+      const base64 = (str + pad).replace(/-/g, "+").replace(/_/g, "/");
+      return decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join("")
+      );
+    }
+
+    function parseJwt(token) {
+      const parts = token.split(".");
+      if (parts.length !== 3) throw new Error("Invalid JWT");
+      return JSON.parse(base64UrlDecode(parts[1]));
+    }
+
+    function randomString(length = 64) {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+      let result = "";
+      const array = new Uint8Array(length);
+      crypto.getRandomValues(array);
+      for (let i = 0; i < array.length; i++) {
+        result += chars[array[i] % chars.length];
+      }
+      return result;
+    }
+
+    async function sha256(plain) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(plain);
+      return await crypto.subtle.digest("SHA-256", data);
+    }
+
+    function base64UrlEncodeArrayBuffer(arrayBuffer) {
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+
+    async function createPkceChallenge(verifier) {
+      const hashed = await sha256(verifier);
+      return base64UrlEncodeArrayBuffer(hashed);
+    }
+
+    function setConnected(connected) {
+      isConnected = connected;
+      statusText.textContent = connected ? "연결됨" : "연결 안 됨";
+      statusDot.classList.toggle("connected", connected);
+    }
+
+    function formatTime(isoString) {
+      const d = isoString ? new Date(isoString) : new Date();
+      return d.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    function addMessage({ type = "other", displayName = "", message = "", sentAt = null }) {
+      const div = document.createElement("div");
+      div.className = `message ${type}`;
+
+      if (type === "system") {
+        div.innerHTML = `<div>${message}</div>`;
+      } else {
+        div.innerHTML = `
+          <div class="meta">${escapeHtml(displayName)} · ${formatTime(sentAt)}</div>
+          <div>${escapeHtml(message)}</div>
+        `;
+      }
+
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function saveAuthToSession() {
+      sessionStorage.setItem("chat_id_token", auth.idToken || "");
+      sessionStorage.setItem("chat_access_token", auth.accessToken || "");
+      sessionStorage.setItem("chat_username", auth.username || "");
+      sessionStorage.setItem("chat_display_name", auth.displayName || "");
+    }
+
+    function loadAuthFromSession() {
+      auth.idToken = sessionStorage.getItem("chat_id_token") || null;
+      auth.accessToken = sessionStorage.getItem("chat_access_token") || null;
+      auth.username = sessionStorage.getItem("chat_username") || null;
+      auth.displayName = sessionStorage.getItem("chat_display_name") || null;
+      renderAuthState();
+    }
+
+    function clearAuth() {
+      auth = {
+        idToken: null,
+        accessToken: null,
+        username: null,
+        displayName: null
+      };
+      sessionStorage.removeItem("chat_id_token");
+      sessionStorage.removeItem("chat_access_token");
+      sessionStorage.removeItem("chat_username");
+      sessionStorage.removeItem("chat_display_name");
+      renderAuthState();
+    }
+
+    function renderAuthState() {
+      if (auth.idToken) {
+        authText.textContent = `로그인됨: ${auth.displayName || auth.username || "사용자"}`;
+      } else {
+        authText.textContent = "로그인 안 됨";
+      }
+    }
+
+    async function startLogin() {
+      const verifier = randomString(64);
+      const challenge = await createPkceChallenge(verifier);
+      sessionStorage.setItem("pkce_verifier", verifier);
+
+      const loginUrl =
+        `${USER_POOL_DOMAIN}/login?` +
+        `client_id=${encodeURIComponent(CLIENT_ID)}` +
+        `&response_type=code` +
+        `&scope=${encodeURIComponent("openid email profile")}` +
+        `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+        `&code_challenge_method=S256` +
+        `&code_challenge=${encodeURIComponent(challenge)}`;
+
+      window.location.href = loginUrl;
+    }
+
+    async function exchangeCodeForToken(code) {
+      const verifier = sessionStorage.getItem("pkce_verifier");
+      if (!verifier) throw new Error("PKCE verifier not found.");
+
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: CLIENT_ID,
+        code,
+        redirect_uri: REDIRECT_URI,
+        code_verifier: verifier
+      });
+
+      const res = await fetch(`${USER_POOL_DOMAIN}/oauth2/token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Token exchange failed: ${text}`);
+      }
+
+      return await res.json();
+    }
+
+    async function handleAuthCallback() {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+
+      if (!code) return;
+
+      try {
+        const tokenData = await exchangeCodeForToken(code);
+
+        auth.idToken = tokenData.id_token;
+        auth.accessToken = tokenData.access_token;
+
+        const claims = parseJwt(auth.idToken);
+        auth.username =
+          claims["cognito:username"] ||
+          claims["preferred_username"] ||
+          claims["email"] ||
+          "unknown-user";
+
+        auth.displayName =
+          claims["preferred_username"] ||
+          claims["cognito:username"] ||
+          claims["email"] ||
+          "unknown-user";
+
+        saveAuthToSession();
+        renderAuthState();
+
+        url.searchParams.delete("code");
+        window.history.replaceState({}, document.title, url.toString());
+
+        addMessage({
+          type: "system",
+          message: `Cognito 로그인 완료: ${auth.displayName}`
+        });
+      } catch (error) {
+        console.error(error);
+        addMessage({
+          type: "system",
+          message: `로그인 처리 실패: ${error.message}`
+        });
+      }
+    }
+
+    function logout() {
+      if (socket) socket.close();
+      clearAuth();
+
+      const logoutUrl =
+        `${USER_POOL_DOMAIN}/logout?` +
+        `client_id=${encodeURIComponent(CLIENT_ID)}` +
+        `&logout_uri=${encodeURIComponent(REDIRECT_URI)}`;
+
+      window.location.href = logoutUrl;
+    }
+
+    function connectSocket() {
+      if (!auth.idToken) {
+        addMessage({
+          type: "system",
+          message: "먼저 Cognito 로그인부터 수행하세요."
+        });
+        return;
+      }
+
+      if (!WEBSOCKET_URL || WEBSOCKET_URL.includes("YOUR_API_ID")) {
+        addMessage({
+          type: "system",
+          message: "먼저 index.html의 WEBSOCKET_URL 값을 실제 API Gateway WebSocket URL로 바꿔주세요."
+        });
+        return;
+      }
+
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        addMessage({ type: "system", message: "이미 연결 중이거나 연결되어 있습니다." });
+        return;
+      }
+
+      const socketUrl = `${WEBSOCKET_URL}?idToken=${encodeURIComponent(auth.idToken)}`;
+      socket = new WebSocket(socketUrl);
+
+      socket.onopen = () => {
+        setConnected(true);
+        addMessage({
+          type: "system",
+          message: `서버와 WebSocket 연결이 완료되었습니다. 사용자: ${auth.displayName}`
+        });
+      };
+
+      socket.onclose = () => {
+        setConnected(false);
+        addMessage({ type: "system", message: "WebSocket 연결이 종료되었습니다." });
+      };
+
+      socket.onerror = () => {
+        addMessage({
+          type: "system",
+          message: "WebSocket 오류가 발생했습니다. Cognito 토큰, API 배포, URL을 다시 확인하세요."
+        });
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          const isMine = data.username === auth.username;
+
+          addMessage({
+            type: isMine ? "mine" : "other",
+            displayName: data.displayName || data.username || "사용자",
+            message: data.message || "",
+            sentAt: data.sentAt || new Date().toISOString()
+          });
+        } catch (err) {
+          addMessage({
+            type: "system",
+            message: `수신 원본: ${event.data}`
+          });
+        }
+      };
+    }
+
+    function disconnectSocket() {
+      if (socket) socket.close();
+    }
+
+    function sendMessage() {
+      const message = messageInput.value.trim();
+
+      if (!auth.idToken) {
+        addMessage({ type: "system", message: "먼저 Cognito 로그인부터 수행하세요." });
+        return;
+      }
+
+      if (!isConnected || !socket || socket.readyState !== WebSocket.OPEN) {
+        addMessage({ type: "system", message: "먼저 WebSocket 연결부터 수행하세요." });
+        return;
+      }
+
+      if (!message) {
+        addMessage({ type: "system", message: "보낼 메시지를 입력하세요." });
+        return;
+      }
+
+      socket.send(JSON.stringify({
+        action: "sendMessage",
+        message
+      }));
+
+      messageInput.value = "";
+      messageInput.focus();
+    }
+
+    loginBtn.addEventListener("click", startLogin);
+    logoutBtn.addEventListener("click", logout);
+    connectBtn.addEventListener("click", connectSocket);
+    disconnectBtn.addEventListener("click", disconnectSocket);
+    sendBtn.addEventListener("click", sendMessage);
+    clearBtn.addEventListener("click", () => {
+      messagesEl.innerHTML = "";
+      addMessage({ type: "system", message: "채팅 화면을 지웠습니다." });
+    });
+
+    messageInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    loadAuthFromSession();
+    handleAuthCallback();
+
+    addMessage({
+      type: "system",
+      message: "환영합니다. 먼저 Cognito 로그인 후 WebSocket 연결을 수행하세요."
+    });
+  </script>
+</body>
+</html>
